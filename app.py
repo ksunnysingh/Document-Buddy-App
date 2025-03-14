@@ -1,4 +1,10 @@
 # app.py
+import asyncio
+
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 import streamlit as st
 from streamlit import session_state
@@ -106,7 +112,7 @@ elif choice == "🤖 Chatbot":
                         model_name="BAAI/bge-small-en",
                         device="cpu",
                         encode_kwargs={"normalize_embeddings": True},
-                        qdrant_url="http://localhost:6333",
+                        qdrant_url="http://qdrant:6333",
                         collection_name="vector_db"
                     )
                     
@@ -122,9 +128,9 @@ elif choice == "🤖 Chatbot":
                             model_name="BAAI/bge-small-en",
                             device="cpu",
                             encode_kwargs={"normalize_embeddings": True},
-                            llm_model="llama3.2:3b",
+                            llm_model="llama3:8b",
                             llm_temperature=0.7,
-                            qdrant_url="http://localhost:6333",
+                            qdrant_url="http://qdrant:6333",
                             collection_name="vector_db"
                         )
                     

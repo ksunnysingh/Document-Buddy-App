@@ -5,7 +5,11 @@ from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain_ollama import ChatOllama
 from qdrant_client import QdrantClient
-from langchain import PromptTemplate
+#/usr/local/lib/python3.9/site-packages/langchain/__init__.py:30: 
+#UserWarning: Importing PromptTemplate from langchain root module is no longer supported. 
+#Please use langchain_core.prompts.PromptTemplate instead
+#from langchain import PromptTemplate
+from langchain_core.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 import streamlit as st
 
@@ -15,7 +19,7 @@ class ChatbotManager:
         model_name: str = "BAAI/bge-small-en",
         device: str = "cpu",
         encode_kwargs: dict = {"normalize_embeddings": True},
-        llm_model: str = "llama3.2:3b",
+        llm_model: str = "llama3:8b",
         llm_temperature: float = 0.7,
         qdrant_url: str = "http://localhost:6333",
         collection_name: str = "vector_db",
@@ -55,14 +59,35 @@ class ChatbotManager:
         )
 
         # Define the prompt template
-        self.prompt_template = """Use the following pieces of information to answer the user's question.
-If you don't know the answer, just say that you don't know, don't try to make up an answer.
+#        self.prompt_template = """Use the following pieces of information to answer the user's question.
+#If you don't know the answer, just say that you don't know, don't try to make up an answer.
+#
+#Context: {context}
+#Question: {question}
+#
+#Only return the helpful answer. Answer must be detailed and well explained.
+#Helpful answer:
+#"""
+#        self.prompt_template = """Use the following extracted document information to answer the user's question.
+#If the document does not provide an answer, say 'The document does not contain relevant information.'
+#
+#Document Context: {context}
+#User Question: {question}
+#
+#Provide a response strictly based on the document. Avoid speculation.
+#Response:
+#"""
 
-Context: {context}
-Question: {question}
+        self.prompt_template = """Use the following extracted document information to answer the user's question.
+If the document does not provide an answer, say 'The document does not contain relevant information.'
 
-Only return the helpful answer. Answer must be detailed and well explained.
-Helpful answer:
+Document Context: {context}
+User Question: {question}
+
+Provide a well-structured, informative, and detailed response. If relevant, include specific details from the document.
+Always attempt to provide insights and explanations rather than short answers.
+
+Answer:
 """
 
         # Initialize Qdrant client
@@ -84,7 +109,7 @@ Helpful answer:
         )
 
         # Initialize the retriever
-        self.retriever = self.db.as_retriever(search_kwargs={"k": 1})
+        self.retriever = self.db.as_retriever(search_kwargs={"k": 5})
 
         # Define chain type kwargs
         self.chain_type_kwargs = {"prompt": self.prompt}
