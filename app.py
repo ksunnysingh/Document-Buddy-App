@@ -1,4 +1,3 @@
-# app.py
 import asyncio
 
 try:
@@ -16,24 +15,19 @@ from chatbot import ChatbotManager     # Import the ChatbotManager class
 
 # Function to display the PDF of a given file
 def displayPDF(file):
-    # Reading the uploaded file
-    base64_pdf = base64.b64encode(file.read()).decode('utf-8')
-
-    # Embedding PDF in HTML
+    base64_pdf = base64.b64encode(file.read()).decode("utf-8")
     pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
-
-    # Displaying the PDF
     st.markdown(pdf_display, unsafe_allow_html=True)
 
 # Initialize session_state variables if not already present
-if 'temp_pdf_path' not in st.session_state:
-    st.session_state['temp_pdf_path'] = None
+if "uploaded_files" not in st.session_state:
+    st.session_state["uploaded_files"] = []
 
-if 'chatbot_manager' not in st.session_state:
-    st.session_state['chatbot_manager'] = None
+if "chatbot_manager" not in st.session_state:
+    st.session_state["chatbot_manager"] = None
 
-if 'messages' not in st.session_state:
-    st.session_state['messages'] = []
+if "messages" not in st.session_state:
+    st.session_state["messages"] = []
 
 # Set the page configuration to wide layout and add a title
 st.set_page_config(
@@ -44,11 +38,10 @@ st.set_page_config(
 
 # Sidebar
 with st.sidebar:
-    # You can replace the URL below with your own logo URL or local image path
     st.image("logo.png", use_column_width=True)
     st.markdown("### 📚 Your Personal Document Assistant")
     st.markdown("---")
-    
+
     # Navigation Menu
     menu = ["🏠 Home", "🤖 Chatbot", "📧 Contact"]
     choice = st.selectbox("Navigate", menu)
@@ -56,134 +49,154 @@ with st.sidebar:
 # Home Page
 if choice == "🏠 Home":
     st.title("📄 Document Buddy App")
-    st.markdown("""
-    Welcome to **Document Buddy App**! 🚀
+    st.markdown(
+        """
+        Welcome to **Document Buddy App**! 🚀
 
-    **Built using Open Source Stack (Llama 3.2, BGE Embeddings, and Qdrant running locally within a Docker Container.)**
+        **Built using Open Source Stack (Llama 3.2, BGE Embeddings, and Qdrant running locally within a Docker Container.)**
 
-    - **Upload Documents**: Easily upload your PDF documents.
-    - **Summarize**: Get concise summaries of your documents.
-    - **Chat**: Interact with your documents through our intelligent chatbot.
+        - **Upload Documents**: Easily upload your PDF documents.
+        - **Summarize**: Get concise summaries of your documents.
+        - **Chat**: Interact with your documents through our intelligent chatbot.
 
-    Enhance your document management experience with Document Buddy! 😊
-    """)
+        Enhance your document management experience with Document Buddy! 😊
+        """
+    )
 
 # Chatbot Page
 elif choice == "🤖 Chatbot":
     st.title("🤖 Chatbot Interface (Llama 3.2 RAG 🦙)")
     st.markdown("---")
-    
+
     # Create three columns
     col1, col2, col3 = st.columns(3)
 
     # Column 1: File Uploader and Preview
     with col1:
-        st.header("📂 Upload Document")
-        uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
-        if uploaded_file is not None:
-            st.success("📄 File Uploaded Successfully!")
-            # Display file name and size
-            st.markdown(f"**Filename:** {uploaded_file.name}")
-            st.markdown(f"**File Size:** {uploaded_file.size} bytes")
-            
-            # Display PDF preview using displayPDF function
-            st.markdown("### 📖 PDF Preview")
-            displayPDF(uploaded_file)
-            
-            # Save the uploaded file to a temporary location
-            temp_pdf_path = "temp.pdf"
-            with open(temp_pdf_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            # Store the temp_pdf_path in session_state
-            st.session_state['temp_pdf_path'] = temp_pdf_path
+        st.header("📂 Upload Documents")
+        uploaded_files = st.file_uploader("Upload PDFs", type=["pdf"], accept_multiple_files=True)
 
-    # Column 2: Create Embeddings
+        if uploaded_files:
+            st.success(f"📄 {len(uploaded_files)} Files Uploaded Successfully!")
+            st.session_state["uploaded_files"] = uploaded_files
+
+            # Display uploaded files and save them temporarily
+            temp_files = []
+            for file in uploaded_files:
+                temp_file_path = f"temp_{file.name}"
+                temp_files.append(temp_file_path)
+                with open(temp_file_path, "wb") as f:
+                    f.write(file.getbuffer())
+                st.markdown(f"**Filename:** {file.name} ({file.size} bytes)")
+                displayPDF(file)
+
+            # Store temp file paths
+            st.session_state["temp_files"] = temp_files
+
+    # Column 2: Create Embeddings for All Uploaded Documents
     with col2:
-        st.header("🧠 Embeddings")
-        create_embeddings = st.checkbox("✅ Create Embeddings")
+        st.header("🧠 Create Embeddings")
+        create_embeddings = st.checkbox("✅ Create Embeddings for All Documents")
+
         if create_embeddings:
-            if st.session_state['temp_pdf_path'] is None:
-                st.warning("⚠️ Please upload a PDF first.")
+            if not st.session_state["uploaded_files"]:
+                st.warning("⚠️ Please upload PDFs first.")
             else:
                 try:
-                    # Initialize the EmbeddingsManager
-                    embeddings_manager = EmbeddingsManager(
-                        model_name="BAAI/bge-small-en",
-                        device="cpu",
-                        encode_kwargs={"normalize_embeddings": True},
-                        qdrant_url="http://qdrant:6333",
-                        collection_name="vector_db"
-                    )
-                    
-                    with st.spinner("🔄 Embeddings are in process..."):
-                        # Create embeddings
-                        result = embeddings_manager.create_embeddings(st.session_state['temp_pdf_path'])
-                        time.sleep(1)  # Optional: To show spinner for a bit longer
-                    st.success(result)
-                    
+                    # Process each document individually
+                    for file, temp_pdf_path in zip(st.session_state["uploaded_files"], st.session_state["temp_files"]):
+                        collection_name = f"vector_db_{file.name}"  # Unique collection per document
+                        embeddings_manager = EmbeddingsManager(
+                            model_name="BAAI/bge-small-en",
+                            device="cpu",
+                            encode_kwargs={"normalize_embeddings": True},
+                            qdrant_url="http://qdrant:6333",
+                            collection_name=collection_name,
+                        )
+
+                        with st.spinner(f"🔄 Creating embeddings for {file.name}..."):
+                            result = embeddings_manager.create_embeddings(temp_pdf_path)
+                            time.sleep(1)
+
+                        st.success(f"✅ Embeddings created for {file.name}")
+
                     # Initialize the ChatbotManager after embeddings are created
-                    if st.session_state['chatbot_manager'] is None:
-                        st.session_state['chatbot_manager'] = ChatbotManager(
+                    if st.session_state["chatbot_manager"] is None:
+                        st.session_state["chatbot_manager"] = ChatbotManager(
                             model_name="BAAI/bge-small-en",
                             device="cpu",
                             encode_kwargs={"normalize_embeddings": True},
                             llm_model="llama3:8b",
                             llm_temperature=0.7,
                             qdrant_url="http://qdrant:6333",
-                            collection_name="vector_db"
+                            collection_name="vector_db",
                         )
-                    
-                except FileNotFoundError as fnf_error:
-                    st.error(fnf_error)
-                except ValueError as val_error:
-                    st.error(val_error)
-                except ConnectionError as conn_error:
-                    st.error(conn_error)
+
                 except Exception as e:
                     st.error(f"An unexpected error occurred: {e}")
 
     # Column 3: Chatbot Interface
     with col3:
-        st.header("💬 Chat with Document")
-        
-        if st.session_state['chatbot_manager'] is None:
-            st.info("🤖 Please upload a PDF and create embeddings to start chatting.")
-        else:
-            # Display existing messages
-            for msg in st.session_state['messages']:
-                st.chat_message(msg['role']).markdown(msg['content'])
+        st.header("💬 Chat with Documents")
 
-            # User input
-            if user_input := st.chat_input("Type your message here..."):
-                # Display user message
+        if st.session_state["chatbot_manager"] is None:
+            st.info("🤖 Please upload PDFs and create embeddings to start chatting.")
+        else:
+            for msg in st.session_state["messages"]:
+                st.chat_message(msg["role"]).markdown(msg["content"])
+
+            user_input = st.chat_input("Type your message here...")
+
+            if user_input:
                 st.chat_message("user").markdown(user_input)
-                st.session_state['messages'].append({"role": "user", "content": user_input})
+                st.session_state["messages"].append({"role": "user", "content": user_input})
 
                 with st.spinner("🤖 Responding..."):
                     try:
-                        # Get the chatbot response using the ChatbotManager
-                        answer = st.session_state['chatbot_manager'].get_response(user_input)
-                        time.sleep(1)  # Simulate processing time
+                        # Retrieve from all collections
+                        all_collections = [
+                            f"vector_db_{file.name}" for file in st.session_state["uploaded_files"]
+                        ]
+
+                        retrieved_docs = []
+                        for collection in all_collections:
+                            temp_db = Qdrant(
+                                client=st.session_state["chatbot_manager"].client,
+                                embeddings=st.session_state["chatbot_manager"].embeddings,
+                                collection_name=collection,
+                            )
+                            retrieved_docs.extend(
+                                temp_db.as_retriever(search_kwargs={"k": 3}).get_relevant_documents(user_input)
+                            )
+
+                        if retrieved_docs:
+                            context = "\n\n".join([doc.page_content for doc in retrieved_docs])
+                            chatbot_prompt = f"Based on the extracted document information:\n\n{context}\n\n{user_input}"
+                        else:
+                            chatbot_prompt = user_input  # No context, just use LLM
+
+                        answer = st.session_state["chatbot_manager"].get_response(chatbot_prompt)
+                        time.sleep(1)
+
                     except Exception as e:
                         answer = f"⚠️ An error occurred while processing your request: {e}"
-                
-                # Display chatbot message
+
                 st.chat_message("assistant").markdown(answer)
-                st.session_state['messages'].append({"role": "assistant", "content": answer})
+                st.session_state["messages"].append({"role": "assistant", "content": answer})
 
 # Contact Page
 elif choice == "📧 Contact":
     st.title("📬 Contact Us")
-    st.markdown("""
-    We'd love to hear from you! Whether you have a question, feedback, or want to contribute, feel free to reach out.
+    st.markdown(
+        """
+        We'd love to hear from you! Reach out for questions or feedback.
 
-    - **Email:** [developer@example.com](mailto:aianytime07@gmail.com) ✉️
-    - **GitHub:** [Contribute on GitHub](https://github.com/AIAnytime/Document-Buddy-App) 🛠️
-
-    If you'd like to request a feature or report a bug, please open a pull request on our GitHub repository. Your contributions are highly appreciated! 🙌
-    """)
+        - **Email:** [developer@example.com](mailto:aianytime07@gmail.com)
+        - **GitHub:** [Contribute on GitHub](https://github.com/AIAnytime/Document-Buddy-App) 🛠️
+        """
+    )
 
 # Footer
 st.markdown("---")
 st.markdown("© 2024 Document Buddy App by AI Anytime. All rights reserved. 🛡️")
+
