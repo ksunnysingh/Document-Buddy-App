@@ -3,6 +3,33 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Pyenv-specific files
+.python-version
+
+# Virtual environment (pyenv-virtualenv or other virtualenvs)
+.venv/
+venv/
+
+# Pipenv
+# DON'T ignore Pipfile or Pipfile.lock!
+# Pipfile
+# Pipfile.lock
+
+# pyenv
+.python-version
+
+# VSCode / IDE stuff
+.vscode/
+.idea/
+
+# Logs
+*.log
+
 # C extensions
 *.so
 
