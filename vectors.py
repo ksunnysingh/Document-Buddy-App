@@ -13,7 +13,7 @@ class EmbeddingsManager:
         model_name: str = "BAAI/bge-small-en",
         device: str = "cpu",
         encode_kwargs: dict = {"normalize_embeddings": True},
-        qdrant_url: str = "http://localhost:6333",
+        qdrant_url: str = "http://qdrant:6333",
         collection_name: str = "vector_db",
     ):
         """

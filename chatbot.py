@@ -21,7 +21,7 @@ class ChatbotManager:
         encode_kwargs: dict = {"normalize_embeddings": True},
         llm_model: str = "llama3:8b",
         llm_temperature: float = 0.7,
-        qdrant_url: str = "http://localhost:6333",
+        qdrant_url: str = "http://qdrant:6333",
         collection_name: str = "vector_db",
     ):
         """
