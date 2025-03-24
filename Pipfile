@@ -1,0 +1,23 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+streamlit = "*"
+langchain = "*"
+langchain-community = "*"
+langchain-core = "*"
+python-dotenv = "*"
+langchain-huggingface = "*"
+langchain-qdrant = "*"
+langchain-ollama = "*"
+unstructured = {extras = ["pdf"], version = "*"}
+onnx = "==1.16.1"
+qdrant-client = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.12"
+python_full_version = "3.12.0"
