@@ -65,7 +65,7 @@ class EmbeddingsManager:
         if not docs:
             raise ValueError("No documents were loaded from the PDF.")
 
-        text_splitter = RecursiveCharacterTextSplitter(            chunk_size=1000, chunk_overlap=250        )
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
         splits = text_splitter.split_documents(docs)
         if not splits:
             raise ValueError("No text chunks were created from the documents.")
@@ -79,6 +79,9 @@ class EmbeddingsManager:
                 prefer_grpc=False,
                 collection_name=self.collection_name,
             )
+
+            print(qdrant.client.get_collection(collection_name=self.collection_name))
+
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Qdrant: {e}")
 

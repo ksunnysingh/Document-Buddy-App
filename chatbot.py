@@ -131,10 +131,10 @@ Answer:
             retriever=self.retriever,
             return_source_documents=False,  # Set to False to return only 'result'
             chain_type_kwargs=self.chain_type_kwargs,
-            verbose=False
+            verbose=True
         )
 
-    def get_response(self, query: str) -> str:
+    def get_responseOLD(self, query: str) -> str:
         """
         Processes the user's query and returns the chatbot's response.
 
@@ -150,3 +150,41 @@ Answer:
         except Exception as e:
             st.error(f"⚠️ An error occurred while processing your request: {e}")
             return "⚠️ Sorry, I couldn't process your request at the moment."
+        
+
+    def get_response(self, query: str) -> str:
+        try:
+            # Step 1: Get top-k documents from Qdrant via retriever
+            docs = self.retriever.get_relevant_documents(query)
+
+            # Step 2: Build context string
+            #context = "\n\n".join([doc.page_content for doc in docs])
+
+            for i, doc in enumerate(docs):
+                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
+
+            # Deduplicate by content
+            unique_chunks = list({doc.page_content for doc in docs})
+
+            # Now join only unique chunks into the prompt context
+            context = "\n\n".join(unique_chunks)
+
+            # Step 3: Format the final prompt using the template
+            filled_prompt = self.prompt.format(context=context, question=query)
+
+            # 🔍 Print it to terminal / log it
+            print("\n" + "="*30)
+            print("🧠 Prompt Sent to LLM:")
+            print(filled_prompt)
+            print("="*30 + "\n")
+
+            # Step 4: Call the LLM directly (bypass RetrievalQA)
+            response = self.llm.invoke(filled_prompt)
+
+            return response
+
+        except Exception as e:
+            st.error(f"⚠️ An error occurred while processing your request: {e}")
+            return "⚠️ Sorry, I couldn't process your request at the moment."
+
+    

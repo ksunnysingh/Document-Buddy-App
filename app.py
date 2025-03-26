@@ -53,7 +53,7 @@ with st.sidebar:
     st.markdown("---")
     
     # Navigation Menu
-    menu = ["🏠 Home", "🤖 Chatbot", "📧 Contact"]
+    menu = ["🏠 Home", "🤖 Chatbot", "📧 Contact", "📈 Visualize Embeddings"]
     choice = st.selectbox("Navigate", menu)
 
 # Home Page
@@ -170,7 +170,8 @@ elif choice == "🤖 Chatbot":
                         answer = f"⚠️ An error occurred while processing your request: {e}"
                 
                 # Display chatbot message
-                st.chat_message("assistant").markdown(answer)
+                #st.chat_message("assistant").markdown(answer)
+                st.chat_message("assistant").markdown(answer.content.replace("\\n", "\n"))
                 st.session_state['messages'].append({"role": "assistant", "content": answer})
 
 # Contact Page
@@ -184,6 +185,59 @@ elif choice == "📧 Contact":
 
     If you'd like to request a feature or report a bug, please open a pull request on our GitHub repository. Your contributions are highly appreciated! 🙌
     """)
+
+elif choice == "📈 Visualize Embeddings":
+    st.title("📊 Qdrant Embedding Visualizer")
+    st.markdown("This view reduces your document vectors to 2D using PCA and shows them as a scatter plot.")
+
+    try:
+        from qdrant_client import QdrantClient
+        from sklearn.decomposition import PCA
+        import matplotlib.pyplot as plt
+
+        client = QdrantClient(url="http://localhost:6333")
+
+        # Pull up to 100 embedded vectors with payload
+        points, _ = client.scroll(
+            collection_name="vector_db",
+            limit=100,
+            with_payload=True,
+            with_vectors=True
+        )
+
+        vectors = []
+        labels = []
+
+        for point in points:
+            vector = point.vector
+            payload = point.payload
+            text = payload.get("text") or payload.get("page_content") or "No label"
+            short_text = text[:60].replace("\n", " ").strip() + "..."
+            vectors.append(vector)
+            labels.append(short_text)
+
+        if vectors:
+            pca = PCA(n_components=2)
+            reduced = pca.fit_transform(vectors)
+
+            fig, ax = plt.subplots(figsize=(12, 7))
+            ax.scatter(reduced[:, 0], reduced[:, 1], color='skyblue', alpha=0.7)
+
+            for i, label in enumerate(labels):
+                ax.text(reduced[i, 0] + 0.01, reduced[i, 1] + 0.01, label, fontsize=8)
+
+            ax.set_title("Qdrant Embeddings Visualized (PCA)")
+            ax.set_xlabel("PCA Component 1")
+            ax.set_ylabel("PCA Component 2")
+            ax.grid(True)
+            st.pyplot(fig)
+
+        else:
+            st.warning("No vectors found in Qdrant.")
+
+    except Exception as e:
+        st.error(f"Failed to visualize embeddings: {e}")
+
 
 # Footer
 st.markdown("---")
