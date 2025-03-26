@@ -6,12 +6,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import Qdrant
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.models import Filter, FieldCondition
 
 class EmbeddingsManager:
     def __init__(
         self,
         model_name: str = "BAAI/bge-small-en",
-        device: str = None,  # allow auto-detection if not passed
+        device: str = None,
         encode_kwargs: dict = {"normalize_embeddings": True},
         qdrant_url: str = "http://qdrant:6333",
         collection_name: str = "vector_db",
@@ -46,6 +48,10 @@ class EmbeddingsManager:
 
         doc_hash = self.hash_pdf(pdf_path)
 
+        # Check if collection exists
+        collections = self.client.get_collections().collections
+        collection_names = [c.name for c in collections]
+
         # Check if this hash already exists in Qdrant
         # Search the vector_db collection and return 1 document that has a payload field called doc_hash with the value matching the current PDF’s hash. 
         # If we find one, that means we’ve already embedded this document — and we can skip reprocessing it."
@@ -68,23 +74,40 @@ class EmbeddingsManager:
         # (points, next_page_offset) = self.client.scroll(...)
         # points: a list of matching documents (vectors + payload)
         # next_page_offset: used for pagination (i.e., getting the next batch if there are more results)
-        # Get the points, ignore pagination
 
-        collections = self.client.get_collections().collections
-        collection_names = [c.name for c in collections]
+        if self.collection_name in collection_names:
+            try:
+                existing_points, _ = self.client.scroll(
+                    collection_name=self.collection_name,
+                    scroll_filter={"must": [{"key": "doc_hash", "match": {"value": doc_hash}}]},
+                    limit=1
+                )
+                if existing_points:
+                    return "✅ Embeddings already exist for this document. Skipping reprocessing."
+                else:
+                    # Delete old embeddings with different hash
+                    # self.client.delete(
+                    #    collection_name=self.collection_name,
+                    #    filter={"must_not": [{"key": "doc_hash", "match": {"value": doc_hash}}]}
+                    # )
 
-        print("📦 Available Qdrant Collections:", collection_names)
+                    self.client.delete(
+                        collection_name=self.collection_name,
+                        points_selector=Filter(
+                            must_not=[
+                                FieldCondition(
+                                    key="doc_hash",
+                                    match={"value": doc_hash}  # ✅ Use plain dict here
+                                )
+                            ]
+                        )
+                    )
+            except UnexpectedResponse as e:
+                if "doesn't exist" in str(e):
+                    print("Collection not found during scroll.")
+                else:
+                    raise
 
-        if self.collection_name in collection_names:    
-            existing_points, _ = self.client.scroll(
-                collection_name=self.collection_name,
-                scroll_filter={"must": [{"key": "doc_hash", "match": {"value": doc_hash}}]},
-                limit=1
-            )
-
-            if existing_points:
-                return "✅ Embeddings already exist for this document. Skipping reprocessing."
-        
         # What is next_page_offset?
         # It’s a marker (an internal offset) that tells Qdrant where to continue the scroll from.
         # 
@@ -109,7 +132,7 @@ class EmbeddingsManager:
         #
         #    if next_offset is None:
         #        break  # No more data left
-
+        #
         # Load and preprocess the document
         loader = UnstructuredPDFLoader(pdf_path)
         docs = loader.load()
@@ -121,13 +144,6 @@ class EmbeddingsManager:
         if not splits:
             raise ValueError("No text chunks were created from the documents.")
 
-        # Delete old points that don't match the current hash (optional cleanup)
-        if self.collection_name in collection_names:
-            self.client.delete(
-                collection_name=self.collection_name,
-                filter={"must_not": [{"key": "doc_hash", "match": {"value": doc_hash}}]}
-            )
-
         # Add the hash to the payload of each document
         for doc in splits:
             if doc.metadata is None:
@@ -136,14 +152,18 @@ class EmbeddingsManager:
 
         # Create and store embeddings in Qdrant
         try:
-            Qdrant.from_documents(
+            qdrant = Qdrant.from_documents(
                 splits,
                 embedding=self.embeddings,
                 url=self.qdrant_url,
                 prefer_grpc=False,
                 collection_name=self.collection_name,
             )
+
+            print(qdrant.client.get_collection(collection_name=self.collection_name))
+
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Qdrant: {e}")
 
         return "✅ Vector DB successfully created and stored in Qdrant!"
+
