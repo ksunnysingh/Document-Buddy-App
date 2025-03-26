@@ -1,6 +1,7 @@
 # vectors.py
 
 import os
+import torch
 import base64
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -11,7 +12,7 @@ class EmbeddingsManager:
     def __init__(
         self,
         model_name: str = "BAAI/bge-small-en",
-        device: str = "cpu",
+        device: str = None, # allow auto-detection if not passed 
         encode_kwargs: dict = {"normalize_embeddings": True},
         qdrant_url: str = "http://qdrant:6333",
         collection_name: str = "vector_db",
@@ -26,6 +27,13 @@ class EmbeddingsManager:
             qdrant_url (str): The URL for the Qdrant instance.
             collection_name (str): The name of the Qdrant collection.
         """
+
+        if not device:
+            if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+                device = "mps"
+            else:
+                device = "cpu"
+
         self.model_name = model_name
         self.device = device
         self.encode_kwargs = encode_kwargs
@@ -57,9 +65,7 @@ class EmbeddingsManager:
         if not docs:
             raise ValueError("No documents were loaded from the PDF.")
 
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=250
-        )
+        text_splitter = RecursiveCharacterTextSplitter(            chunk_size=1000, chunk_overlap=250        )
         splits = text_splitter.split_documents(docs)
         if not splits:
             raise ValueError("No text chunks were created from the documents.")

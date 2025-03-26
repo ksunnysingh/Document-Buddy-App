@@ -1,0 +1,21 @@
+
+
+
+1. streamlit run app.py
+
+2. if you have not pulled llama3:8b model, pull it using
+ollama pull llama3:8b
+
+ollama run llama3:8b
+
+3. cd /Users/sunny/home/apps/qdrant/binary where your qdrant binary is
+./qdrant
+
+If you do not have the qdrant binary then download qdrant-aarch64-apple-darwin.tar.gz from https://github.com/qdrant/qdrant/releases
+
+Verify if working:
+--------------------
+Goto http://localhost:8501/
+click Chatbot in the left pane and upload a file sunny-singh.pdf
+create embedding
+ask a question like - does Sunny know kubernetes?

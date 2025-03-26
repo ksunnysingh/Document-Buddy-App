@@ -14,6 +14,9 @@ import os
 from vectors import EmbeddingsManager  # Import the EmbeddingsManager class
 from chatbot import ChatbotManager     # Import the ChatbotManager class
 
+import sys
+sys.modules['torch.classes'] = None
+
 # Function to display the PDF of a given file
 def displayPDF(file):
     # Reading the uploaded file
@@ -110,9 +113,8 @@ elif choice == "🤖 Chatbot":
                     # Initialize the EmbeddingsManager
                     embeddings_manager = EmbeddingsManager(
                         model_name="BAAI/bge-small-en",
-                        device="cpu",
                         encode_kwargs={"normalize_embeddings": True},
-                        qdrant_url="http://qdrant:6333",
+                        qdrant_url="http://localhost:6333",
                         collection_name="vector_db"
                     )
                     
@@ -126,11 +128,10 @@ elif choice == "🤖 Chatbot":
                     if st.session_state['chatbot_manager'] is None:
                         st.session_state['chatbot_manager'] = ChatbotManager(
                             model_name="BAAI/bge-small-en",
-                            device="cpu",
                             encode_kwargs={"normalize_embeddings": True},
                             llm_model="llama3:8b",
                             llm_temperature=0.7,
-                            qdrant_url="http://qdrant:6333",
+                            qdrant_url="http://localhost:6333",
                             collection_name="vector_db"
                         )
                     

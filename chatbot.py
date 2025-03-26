@@ -1,6 +1,8 @@
 # chatbot.py
 
 import os
+import torch
+
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from langchain_community.vectorstores import Qdrant
 from langchain_ollama import ChatOllama
@@ -17,11 +19,12 @@ class ChatbotManager:
     def __init__(
         self,
         model_name: str = "BAAI/bge-small-en",
-        device: str = "cpu",
+        device: str = None, # allow auto-detection if not passed 
+
         encode_kwargs: dict = {"normalize_embeddings": True},
         llm_model: str = "llama3:8b",
         llm_temperature: float = 0.7,
-        qdrant_url: str = "http://qdrant:6333",
+        qdrant_url: str = "http://localhost:6333",
         collection_name: str = "vector_db",
     ):
         """
@@ -36,6 +39,13 @@ class ChatbotManager:
             qdrant_url (str): The URL for the Qdrant instance.
             collection_name (str): The name of the Qdrant collection.
         """
+
+        if not device:
+            if torch.backends.mps.is_available() and torch.backends.mps.is_built():
+                device = "mps"
+            else:
+                device = "cpu"
+
         self.model_name = model_name
         self.device = device
         self.encode_kwargs = encode_kwargs
