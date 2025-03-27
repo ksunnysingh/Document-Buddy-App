@@ -4,6 +4,29 @@
 
 **Document Buddy App** is a powerful Streamlit-based application designed to simplify document management. Upload your PDF documents, create embeddings for efficient retrieval, and interact with your documents through an intelligent chatbot interface. 🚀
 
+#### rerank_combined() gives you a list of top-k documents that:
+- **   1) Contain relevant keywords, and
+- **  2) Are highly aligned with the query’s intent
+
+#### It does 1) Keyword-Aware Filtering and then 2) CrossEncoder Reranking
+
+#### 1) Keyword-Aware Filtering
+#### --------------------------
+#### self.rerank_by_keyword(documents, keyword=query): This does a basic string match on each document’s page_content, like: query.lower() in doc.page_content.lower()
+#### Then it reorders the documents to put the ones containing the query terms near the top
+
+#### 2) CrossEncoder Reranking
+#### -------------------------
+#### Then it uses a deep relevance model (cross-encoder/ms-marco-MiniLM-L-6-v2) to rerank those documents again based on true semantic match with the query:
+####   pairs = [(query, doc.page_content) for doc in keyword_filtered_docs]
+####   scores = model.predict(pairs)
+####
+#### The CrossEncoder:
+- **   1) Takes the full query + document pair
+- **   2) Applies deep attention across both
+- **   3) Outputs a relevance score
+- **   4) You then sort the documents by this score and keep the best top_k
+
 ## 🛠️ Features
 
 - **📂 Upload Documents**: Easily upload and preview your PDF documents within the app.
