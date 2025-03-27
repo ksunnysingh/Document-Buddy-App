@@ -138,24 +138,30 @@ class ChatbotManager:
             #     2) Preserves quoted phrases as exact keywords (e.g., "cloud architecture" or 'risk engine')
             #     3) Highlights them in the UI with custom styles
 
-            with st.expander("📄 Retrieved Context Chunks"):
-                for i, doc in enumerate(unique_chunks):
-                    st.markdown(f"**Chunk {i+1}:**")
-                    keyword = query.lower().strip('? ')
-                    import nltk
-                    from nltk.corpus import stopwords
-                    nltk.download('stopwords', quiet=True)
-                    stop_words = set(stopwords.words('english'))
-                    # Extract quoted phrases
-                    quoted = re.findall(r'"(.*?)"|\'(.*?)\'', query)
-                    quoted_keywords = [q[0] or q[1] for q in quoted if q[0] or q[1]]
-                    # Extract words ignoring stopwords
-                    terms = re.findall(r'\b\w+\b', query.lower())
-                    keywords = quoted_keywords + [word for word in terms if word not in stop_words and len(word) > 3]
-                    highlighted = doc.page_content[:1000]
-                    for kw in keywords:
-                        highlighted = re.sub(f"(?i)({re.escape(kw)})", r"<u><b><span style='background-color: #ffff66'>\1</span></b></u>", highlighted)
-                    st.markdown(highlighted, unsafe_allow_html=True)
+            # Keyword analytics
+            import collections
+            keywords = [word.lower() for word in re.findall(r'\b\w+\b', query.lower()) if len(word) > 3]
+            keyword_to_chunks = collections.defaultdict(list)
+            for doc in docs:
+                for kw in keywords:
+                    if kw in doc.page_content.lower():
+                        keyword_to_chunks[kw].append(doc)
+
+            # Sort keywords by frequency
+            sorted_keywords = sorted(keyword_to_chunks.items(), key=lambda x: -len(x[1]))
+
+            with st.expander("📄 Retrieved Context Chunks Grouped by Keyword"):
+                if sorted_keywords:
+                    st.markdown("### 🔑 Matched Keywords:")
+                    st.markdown(" ".join([f"<span style='background-color:#e0f7fa;padding:6px 10px;border-radius:10px;margin:4px;display:inline-block'>{kw}</span>" for kw, _ in sorted_keywords]), unsafe_allow_html=True)
+
+                for kw, chunk_list in sorted_keywords:
+                    st.markdown(f"### 🔍 Keyword: {kw} ({len(chunk_list)} match(es))")
+                    for i, doc in enumerate(chunk_list):
+                        st.markdown(f"**Chunk {i+1}:**")
+                        highlighted = doc.page_content[:1000]
+                        highlighted = re.sub(f"(?i)({re.escape(kw)})", r"<u><b><span style='background-color: #ffff66'>\\1</span></b></u>", highlighted)
+                        st.markdown(highlighted, unsafe_allow_html=True)
 
 
             # Step 3: Create prompt
