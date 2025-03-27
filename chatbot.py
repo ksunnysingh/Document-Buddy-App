@@ -85,21 +85,62 @@ class ChatbotManager:
             # Step 1: Retrieve from Qdrant
             raw_docs = self.retriever.get_relevant_documents(query, k=20)
 
-            # Step 2: Rerank based on ererank_combined() + show match info in UI
-
-            docs = self.embeddings_manager.rerank_combined(query, raw_docs, top_k=5)
-
-            #############################################################################################################################################
-            for i, doc in enumerate(docs):
-                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
-
             # Deduplicate by content
             seen = set()
             unique_chunks = []
-            for doc in docs:
+            for doc in raw_docs:
                 if doc.page_content not in seen:
                     seen.add(doc.page_content)
                     unique_chunks.append(doc)
+
+            raw_docs = unique_chunks
+            print("f\n###############################################################################################################################################")
+            print("f\n After retrieving 20 relevant chunks from vector db")
+            print("f\n###############################################################################################################################################")
+
+            for i, doc in enumerate(raw_docs):
+                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
+                
+            print("f\n###############################################################################################################################################")
+
+            #############################################################################################################################################
+
+            # Step 2: Rerank based on ererank_combined() + show match info in UI
+            docs = self.embeddings_manager.rerank_combined(query, raw_docs, top_k=5)
+
+            print("f\n###############################################################################################################################################")
+            print("f\n After rerank combined : top 5 relevant chunks from vector db")
+            print("f\n###############################################################################################################################################")
+            
+            for i, doc in enumerate(docs):
+                
+                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
+                
+            print("f\n###############################################################################################################################################")
+        
+            #############################################################################################################################################
+
+             # Force-include keyword-matching chunks not already in reranked docs
+            all_docs = self.retriever.get_relevant_documents(query, k=50)
+            existing_texts = set(doc.page_content for doc in docs)
+            for doc in all_docs:
+                if doc.page_content not in existing_texts:
+                    for kw in query.lower().split():
+                        if len(kw) > 3 and kw in doc.page_content.lower():
+                            docs.append(doc)
+                            existing_texts.add(doc.page_content)
+                            break  # Add only once if any keyword matches
+
+            print("f\n###############################################################################################################################################")
+            print("f\n After Force-include keyword-matching chunks not already in reranked docs")
+            print("f\n###############################################################################################################################################")
+            
+            for i, doc in enumerate(docs):
+                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
+                
+            print("f\n###############################################################################################################################################")
+
+            #docs = existing_texts
 
             #############################################################################################################################################
 
@@ -168,7 +209,7 @@ class ChatbotManager:
 
             # Now join only unique chunks into the prompt context
             #context = "\n\n".join(unique_chunks)
-            context = "\n\n".join([doc.page_content for doc in unique_chunks])
+            context = "\n\n".join([doc.page_content for doc in docs])
 
             # Step 3: Format the final prompt using the template
             filled_prompt = self.prompt.format(context=context, question=query)
