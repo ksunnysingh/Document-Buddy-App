@@ -5,6 +5,7 @@ from qdrant_client import QdrantClient
 from langchain_core.prompts import PromptTemplate
 from langchain.chains import RetrievalQA
 import streamlit as st
+import re
 
 # Extracts keywords dynamically from the query
 # Uses your EmbeddingsManager to rerank chunks
@@ -81,28 +82,87 @@ class ChatbotManager:
 
     def get_response(self, query: str) -> str:
         try:
-            # Step 1: Retrieve from Qdrant. 
-            # Get top-k documents from Qdrant via retriever ; in the constructor self.retriever = self.db.as_retriever(search_kwargs={"k": 5})
-            docs = self.retriever.get_relevant_documents(query)
+            # Step 1: Retrieve from Qdrant
+            raw_docs = self.retriever.get_relevant_documents(query, k=20)
 
-            # Step 2: Rerank based on extracted keywords + show match info in UI
-            docs = self.embeddings_manager.rerank_by_keyword(docs, keyword=query)
+            # Step 2: Rerank based on ererank_combined() + show match info in UI
 
-            # Step 3: Create prompt
-            # context = "\n\n".join([doc.page_content for doc in docs])
-            # prompt = self.prompt.format(context=context, question=query)
+            docs = self.embeddings_manager.rerank_combined(query, raw_docs, top_k=5)
 
-            # Step 4: Get response from LLM
-            # response = self.llm.invoke(prompt)
-
+            #############################################################################################################################################
             for i, doc in enumerate(docs):
                 print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
 
             # Deduplicate by content
-            unique_chunks = list({doc.page_content for doc in docs})
+            seen = set()
+            unique_chunks = []
+            for doc in docs:
+                if doc.page_content not in seen:
+                    seen.add(doc.page_content)
+                    unique_chunks.append(doc)
+
+            #############################################################################################################################################
+
+            # rerank_combined() does not show match info in the UI by itself.
+            # It’s purely a backend ranking function. It:
+            #   1. Applies keyword-based filtering (via rerank_by_keyword)
+            #   2. Applies CrossEncoder scoring
+            #   3. Returns the top-k most relevant chunks
+
+            # If we want to Show Match Info in Streamlit (UI)
+            # we need to manually display it after the call to rerank_combined()
+
+            # Show retrieved chunks in the UI
+            # The retrieved chunks now highlight matched keywords in yellow using HTML
+            #
+            # support multiple keywords or switch to bold + underline styles
+            #   We highlight just one keyword (your query) using:
+            #   <span style='background-color: #ffff66'>keyword</span>
+            #
+            # This works great for simple queries like:
+            # “Does Sunny know Kubernetes?”
+            # But what if your query contains multiple important terms? for example: “Does Sunny have experience with Kubernetes, Docker, or Helm?”
+            # You might want to highlight all 3 terms: Kubernetes, Docker, Helm
+            # We’d break query into important terms and highlight each one in the chunk text.
+            #
+            # Instead of just yellow background, you could also:
+            # Style	Example
+            #   Bold + underline	<u><b>keyword</b></u>
+            #   🔵 Color text	<span style='color:blue'>keyword</span>
+            #   🟨 Background highlight	<span style='background-color:#ffff66'>keyword</span>
+            #
+            # Below code highlights  multiple keywords from the user query Custom styling: bold, underlined, and yellow background
+            #
+            # The code below does all of the above plus ignores stopwords
+            #     1) Extracts keywords while ignoring common stopwords (like “does”, “have”, “is”)
+            #     2) Preserves quoted phrases as exact keywords (e.g., "cloud architecture" or 'risk engine')
+            #     3) Highlights them in the UI with custom styles
+
+            with st.expander("📄 Retrieved Context Chunks"):
+                for i, doc in enumerate(unique_chunks):
+                    st.markdown(f"**Chunk {i+1}:**")
+                    keyword = query.lower().strip('? ')
+                    import nltk
+                    from nltk.corpus import stopwords
+                    nltk.download('stopwords', quiet=True)
+                    stop_words = set(stopwords.words('english'))
+                    # Extract quoted phrases
+                    quoted = re.findall(r'"(.*?)"|\'(.*?)\'', query)
+                    quoted_keywords = [q[0] or q[1] for q in quoted if q[0] or q[1]]
+                    # Extract words ignoring stopwords
+                    terms = re.findall(r'\b\w+\b', query.lower())
+                    keywords = quoted_keywords + [word for word in terms if word not in stop_words and len(word) > 3]
+                    highlighted = doc.page_content[:1000]
+                    for kw in keywords:
+                        highlighted = re.sub(f"(?i)({re.escape(kw)})", r"<u><b><span style='background-color: #ffff66'>\1</span></b></u>", highlighted)
+                    st.markdown(highlighted, unsafe_allow_html=True)
+
+
+            # Step 3: Create prompt
 
             # Now join only unique chunks into the prompt context
-            context = "\n\n".join(unique_chunks)
+            #context = "\n\n".join(unique_chunks)
+            context = "\n\n".join([doc.page_content for doc in unique_chunks])
 
             # Step 3: Format the final prompt using the template
             filled_prompt = self.prompt.format(context=context, question=query)
@@ -113,17 +173,10 @@ class ChatbotManager:
             print(filled_prompt)
             print("="*30 + "\n")
 
-            # Step 4: Call the LLM directly (bypass RetrievalQA)
+
+            # Step 4: Get response from LLM
             response = self.llm.invoke(filled_prompt)
 
-            # LLM responses (like from LangChain or OpenAI) may come back as either:
-
-            # 1) An object (e.g., AIMessage) → with a .content attribute containing the text
-            # 2) A plain string → already the text (no .content needed)
-            #
-            # If the response object has a .content attribute, return that.
-            # Otherwise, just return the response itself
-        
             return response.content if hasattr(response, 'content') else response
 
         except Exception as e:

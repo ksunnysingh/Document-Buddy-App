@@ -1,7 +1,6 @@
 import os
 import torch
 import hashlib
-import re
 from langchain_community.document_loaders import UnstructuredPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
@@ -9,31 +8,15 @@ from langchain_community.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition
 from qdrant_client.http.exceptions import UnexpectedResponse
-import streamlit as st
-
-# 1) Dynamically extracts keywords from the user’s query
-# 2) Logs and displays each chunk with the matched keywords inside Streamlit
-# 3) Shows both:
-#    Extracted keywords
-#    Keyword match results per chunk (top matches listed first)
+from sentence_transformers import CrossEncoder
 
 class EmbeddingsManager:
-
-    # Initializes the EmbeddingsManager with the specified model and Qdrant settings.
-    #
-    #    Args:
-    #       model_name (str): The HuggingFace model name for embeddings.
-    #       device (str): The device to run the model on ('cpu' or 'cuda').
-    #       encode_kwargs (dict): Additional keyword arguments for encoding.
-    #       qdrant_url (str): The URL for the Qdrant instance.
-    #       collection_name (str): The name of the Qdrant collection.
-    
     def __init__(
         self,
         model_name: str = "BAAI/bge-small-en",
         device: str = None,
         encode_kwargs: dict = {"normalize_embeddings": True},
-        qdrant_url: str = "http://localhost:6333",
+        qdrant_url: str = "http://qdrant:6333",
         collection_name: str = "vector_db",
     ):
         if not device:
@@ -55,6 +38,7 @@ class EmbeddingsManager:
         )
 
         self.client = QdrantClient(url=self.qdrant_url, prefer_grpc=False)
+        self.reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
     def hash_pdf(self, file_path: str) -> str:
         with open(file_path, "rb") as f:
@@ -66,6 +50,7 @@ class EmbeddingsManager:
 
         doc_hash = self.hash_pdf(pdf_path)
 
+        # Check if collection exists
         collections = self.client.get_collections().collections
         collection_names = [c.name for c in collections]
 
@@ -143,7 +128,7 @@ class EmbeddingsManager:
         #
         #    if next_offset is None:
         #        break  # No more data left
-        
+
         # Load and preprocess the document
         loader = UnstructuredPDFLoader(pdf_path)
         docs = loader.load()
@@ -155,11 +140,13 @@ class EmbeddingsManager:
         if not splits:
             raise ValueError("No text chunks were created from the documents.")
 
+        # Add the hash to the payload of each document
         for doc in splits:
             if doc.metadata is None:
                 doc.metadata = {}
             doc.metadata["doc_hash"] = doc_hash
 
+        # Create and store embeddings in Qdrant
         try:
             qdrant = Qdrant.from_documents(
                 splits,
@@ -176,32 +163,25 @@ class EmbeddingsManager:
 
         return "✅ Vector DB successfully created and stored in Qdrant!"
 
-    def extract_keywords(self, query: str):
-        words = re.findall(r"\b\w+\b", query.lower())
-        return [word for word in words if len(word) > 3]
-
     def rerank_by_keyword(self, documents, keyword):
-        if isinstance(keyword, str):
-            keywords = self.extract_keywords(keyword)
-        else:
-            keywords = keyword
-
-        st.markdown("### 🧠 Extracted Keywords from Query")
-        st.write(keywords)
-
-        st.markdown("### 🔍 Reranked Chunks with Keyword Matches")
-
-        def keyword_match_count(text):
-            return sum(1 for k in keywords if k.lower() in text.lower())
-
-        scored_docs = []
-        for i, doc in enumerate(documents):
-            matched = [k for k in keywords if k.lower() in doc.page_content.lower()]
-            match_count = len(matched)
-            st.markdown(f"**Chunk {i+1}**")
-            st.code(doc.page_content[:300] + "...")
-            st.markdown(f"✅ Matched Keywords: `{', '.join(matched)}`")
-            scored_docs.append((doc, match_count))
-
-        ranked = [doc for doc, _ in sorted(scored_docs, key=lambda x: x[1], reverse=True)]
+        keyword_lower = keyword.lower()
+        ranked = sorted(documents, key=lambda d: keyword_lower in d.page_content.lower(), reverse=True)
         return ranked
+
+    def rerank_with_cross_encoder(self, query, documents, top_k=5):
+        if not documents:
+            return []
+
+        pairs = [(query, doc.page_content) for doc in documents]
+        scores = self.reranker.predict(pairs)
+        ranked_docs = [doc for _, doc in sorted(zip(scores, documents), key=lambda x: -x[0])]
+        return ranked_docs[:top_k]
+
+    def rerank_combined(self, query, documents, top_k=5):
+        # First apply keyword-based soft filter
+        keyword = query.lower().strip("? ")
+        keyword_filtered = self.rerank_by_keyword(documents, keyword)
+
+        # Then rerank with cross encoder for precision
+        return self.rerank_with_cross_encoder(query, keyword_filtered, top_k=top_k)
+
