@@ -81,19 +81,49 @@ class ChatbotManager:
 
     def get_response(self, query: str) -> str:
         try:
-            # Step 1: Retrieve from Qdrant
+            # Step 1: Retrieve from Qdrant. 
+            # Get top-k documents from Qdrant via retriever ; in the constructor self.retriever = self.db.as_retriever(search_kwargs={"k": 5})
             docs = self.retriever.get_relevant_documents(query)
 
             # Step 2: Rerank based on extracted keywords + show match info in UI
             docs = self.embeddings_manager.rerank_by_keyword(docs, keyword=query)
 
             # Step 3: Create prompt
-            context = "\n\n".join([doc.page_content for doc in docs])
-            prompt = self.prompt.format(context=context, question=query)
+            # context = "\n\n".join([doc.page_content for doc in docs])
+            # prompt = self.prompt.format(context=context, question=query)
 
             # Step 4: Get response from LLM
-            response = self.llm.invoke(prompt)
+            # response = self.llm.invoke(prompt)
 
+            for i, doc in enumerate(docs):
+                print(f"\n🔍 Chunk {i+1}:\n{doc.page_content[:500]}...\n")
+
+            # Deduplicate by content
+            unique_chunks = list({doc.page_content for doc in docs})
+
+            # Now join only unique chunks into the prompt context
+            context = "\n\n".join(unique_chunks)
+
+            # Step 3: Format the final prompt using the template
+            filled_prompt = self.prompt.format(context=context, question=query)
+
+            # 🔍 Print it to terminal / log it
+            print("\n" + "="*30)
+            print("🧠 Prompt Sent to LLM:")
+            print(filled_prompt)
+            print("="*30 + "\n")
+
+            # Step 4: Call the LLM directly (bypass RetrievalQA)
+            response = self.llm.invoke(filled_prompt)
+
+            # LLM responses (like from LangChain or OpenAI) may come back as either:
+
+            # 1) An object (e.g., AIMessage) → with a .content attribute containing the text
+            # 2) A plain string → already the text (no .content needed)
+            #
+            # If the response object has a .content attribute, return that.
+            # Otherwise, just return the response itself
+        
             return response.content if hasattr(response, 'content') else response
 
         except Exception as e:

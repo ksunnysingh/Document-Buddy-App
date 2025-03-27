@@ -132,7 +132,8 @@ elif choice == "🤖 Chatbot":
                             llm_model="llama3:8b",
                             llm_temperature=0.7,
                             qdrant_url="http://localhost:6333",
-                            collection_name="vector_db"
+                            collection_name="vector_db",
+                            embeddings_manager=embeddings_manager
                         )
                     
                 except FileNotFoundError as fnf_error:
@@ -171,8 +172,9 @@ elif choice == "🤖 Chatbot":
                 
                 # Display chatbot message
                 #st.chat_message("assistant").markdown(answer)
-                st.chat_message("assistant").markdown(answer.content.replace("\\n", "\n"))
-                st.session_state['messages'].append({"role": "assistant", "content": answer})
+                response = answer.content if hasattr(answer, 'content') else answer
+                st.chat_message("assistant").markdown(response.replace("\\n", "\n"))
+                st.session_state['messages'].append({"role": "assistant", "content": response})
 
 # Contact Page
 elif choice == "📧 Contact":
